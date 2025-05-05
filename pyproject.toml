@@ -1,0 +1,19 @@
+[project]
+name = "pollen_api_dwd"
+version = "0.1.6"
+description = "Async client for the DWD pollen forecast data API"
+authors = [
+  { name = "Sven Gerlach", email = "pypi@rexkramer.de" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = ["aiohttp"]
+
+[project.urls]
+Homepage = "https://github.com/rexdek/pollen_api_dwd"
+Repository = "https://github.com/rexdek/pollen_api_dwd.git"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
