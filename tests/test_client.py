@@ -1,17 +1,19 @@
 """Tests for the DwdPollenApiClient."""
 
-from aioresponses import (
-    aioresponses,
-)  # Ensure `aioresponses` is installed in your environment
 import pytest
 
-import pollen_api_dwd
+from aioresponses import aioresponses
+from freezegun import freeze_time
+
+from pollen_api_dwd import PollenApiDwd
+from pollen_api_dwd.client import DWD_URL
 
 
 @pytest.mark.asyncio
+@freeze_time("2025-05-04 12:00:00")
 async def test_fetch_parses_legend_and_last_update():
     """Test that fetch parses legend and last update correctly."""
-    client = client.DwdPollenApiClient()
+    client = PollenApiDwd()
 
     sample_data = {
         "legend": {
@@ -99,18 +101,21 @@ async def test_fetch_parses_legend_and_last_update():
     }
 
     with aioresponses() as mock:
-        mock.get(client.URL, payload=sample_data)
+        mock.get(DWD_URL, payload=sample_data)
         await client.fetch()
 
-    assert client.last_update.year == 2025
+    assert client.last_update.day == 4
+    assert client.next_update.day == 5
     assert client.legend["2-3"]["severity"] == 5
     assert client.legend["0"]["desc"] == "keine Belastung"
-    assert client.region_data["Bayern"]["Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken"]["pollen"]["Birke"] == {'dayafter_to': '1', 'today': '0-1', 'tomorrow': '1'}
+    assert client.regions == ["Bayern", "Schleswig-Holstein und Hamburg"]
+    assert client.partregions("Bayern") == ["Allgäu/Oberbayern/Bay. Wald", "Donauniederungen", "Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken", "Mainfranken"]
+    assert client.pollen("Bayern", "Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken")["Birke"] == (1, 'keine bis geringe Belastung')
 
 @pytest.mark.asyncio
 async def test_invalid_region_raises():
     """Test that invalid region raises a ValueError."""
-    client = DwdPollenApiClient()
+    client = PollenApiDwd()
     client.region_data = {"1": {"1": {"pollen": {}}}}
     client.last_update = client._parse_timestamp("2024-05-04 11:00 Uhr")
 
