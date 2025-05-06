@@ -109,6 +109,8 @@ async def test_fetch_parses_legend_and_last_update():
     assert client.legend["2-3"]["severity"] == 5
     assert client.legend["0"]["desc"] == "keine Belastung"
     assert client.regions == ["Bayern", "Schleswig-Holstein und Hamburg"]
+    assert client.region_id("Bayern") == 120
+    assert client.partregion_id("Bayern", "Mainfranken") == 124
     assert client.partregions("Bayern") == ["Allgäu/Oberbayern/Bay. Wald", "Donauniederungen", "Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken", "Mainfranken"]
     assert client.pollen("Bayern", "Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken")["Birke"] == (1, 'keine bis geringe Belastung')
 

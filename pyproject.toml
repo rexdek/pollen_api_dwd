@@ -1,6 +1,6 @@
 [project]
 name = "pollen_api_dwd"
-version = "0.1.7"
+version = "0.1.8"
 description = "Async client for the DWD pollen forecast data API"
 authors = [
   { name = "Sven Gerlach", email = "pypi@rexkramer.de" }

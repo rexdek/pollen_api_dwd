@@ -23,10 +23,13 @@ class PollenApiDwd:
         self.raw_data = ""
         self.name = ""
         self.sender = ""
-        self.region_data = {}
+        self.legend = {}
         self.last_update = None
         self.next_update = None
-        self.legend = {}
+        self._pollendata = {}
+        self._id2region = {}
+        self._region2id = {}
+        self._region_id2partregions = {}
 
     async def fetch(self):
         """Fetch and parse the pollen data from the DWD API."""
@@ -49,7 +52,23 @@ class PollenApiDwd:
         self.last_update = self._parse_timestamp(data.get("last_update"))
         self.next_update = self._parse_timestamp(data.get("next_update"))
         self.legend = self._parse_legend(data.get("legend", {}))
-        self.region_data = self._parse_region_data(data.get("content", {}))
+
+        for entry in data.get("content"):
+            region = entry.get("region_name")
+            region_id = entry.get("region_id")
+            partregion = entry.get("partregion_name") or region
+            partregion_id = entry.get("partregion_id")
+            data = entry.get("Pollen")
+
+            self._id2region[region_id] = region
+            self._region2id[region] = region_id
+            self._region_id2partregions.setdefault(region_id, [])
+            self._region_id2partregions[region_id].append(
+                {"id": partregion_id,
+                 "name": partregion}
+            )
+            self._pollendata.setdefault(region_id, {})
+            self._pollendata[region_id][partregion_id] = self._parse_pollendata(data)
 
     @staticmethod
     def _parse_legend(legend):
@@ -63,16 +82,12 @@ class PollenApiDwd:
                 }
         return parsed
 
-    @staticmethod
-    def _parse_region_data(region_data):
-        parsed= {}
-        for entry in region_data:
-            region_name = entry.get("region_name")
-            if not region_name:
-                continue
-            partregion = entry.get("partregion_name") or region_name
-            pollen_data = entry.get("Pollen", {})
-            parsed.setdefault(region_name, {})[partregion] = pollen_data
+    def _parse_pollendata(self, pollendata):
+        parsed = {}
+        today = self.last_update
+        for ptype, pdata in pollendata.items():
+            for day, value in pdata.items():
+                parsed.setdefault(day, {})[ptype] = (self.legend[value]["severity"], self.legend[value]["desc"])
         return parsed
 
     @staticmethod
@@ -81,44 +96,49 @@ class PollenApiDwd:
             return None
         return datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M Uhr").replace(tzinfo=TZ)
 
+    def region_id(self, region):
+        return self._region2id[region]
+
     @property
     def regions(self):
         """Return the names of all regions available in the data."""
-        return sorted(self.region_data)
+        return sorted(self._region2id.keys())
+
+    def partregion_id(self, region, partregion):
+        region_id = self.region_id(region)
+        return next(entry["id"] for entry in self._region_id2partregions[region_id]
+                    if entry["name"] == partregion)
 
     def partregions(self, region):
         """Return a list of partregions for the given region."""
-        if region not in self.region_data:
-            raise ValueError(f"Region '{region}' not found")
-        return list(self.region_data[region])
+        region_id = self.region_id(region)
+        return [partregion["name"] for partregion in self._region_id2partregions[region_id]]
 
     def pollen(self, region, partregion, days_ahead=0):
         """Return a dictionary of pollen data for the specified region and partregion."""
-        if region not in self.region_data:
+        if region not in self.regions:
             raise ValueError(f"Region '{region}' not found")
-        if partregion not in self.region_data[region]:
+        if partregion not in self.partregions(region):
             raise ValueError(f"Partregion '{partregion}' not found")
 
         now = datetime.datetime.now(TZ).date()
         day_diff = (now + datetime.timedelta(days=days_ahead) - self.last_update.date()).days
         if day_diff < 0 or day_diff >= len(DAY_KEYS):
-            return {}
+            raise ValueError(f"No data available for requested day")
 
         day_key = DAY_KEYS[day_diff]
-        pollen_data = self.region_data[region][partregion]
-        return {
-            k: (
-                self.legend.get(v.get(day_key), {}).get("severity"),
-                self.legend.get(v.get(day_key), {}).get("desc"),
-            )
-            for k, v in pollen_data.items()
-            if v.get(day_key)
-        }
+        region_id = self.region_id(region)
+        partregion_id = self.partregion_id(region, partregion)
+        pollen_data = self._pollendata[region_id][partregion_id].get(day_key)
+        return pollen_data
+
+    def region_id(self, region_name):
+        return self._region2id.get(region_name)
 
     def __repr__(self):
         """Return a string representation of the PollenApiDwd instance."""
         keys = list(self.__dict__.keys())
-        return f"<PollenApiDwd keys={keys} regions={len(self.region_data)}>"
+        return f"<PollenApiDwd keys={keys} regions={len(self.regions)}>"
 
 
 # Example usage
@@ -139,8 +159,10 @@ if __name__ == "__main__":
         print("Next Update:", client.next_update)
 
         pollen_today = client.pollen(
-            "Schleswig-Holstein und Hamburg", "Geest,Schleswig-Holstein und Hamburg"
+            "Schleswig-Holstein und Hamburg",
+            "Geest,Schleswig-Holstein und Hamburg",
         )
         print("Pollenflug heute:", pollen_today)
+        print(f"Region ID Bayern | Mainfranken: {client.region_id('Bayern')} | {client.partregion_id('Bayern', 'Mainfranken')}")
 
     asyncio.run(main())
